@@ -1,36 +1,27 @@
 const express = require('express');
-const axios = require('axios');
 const app = express();
 
-app.get('/live/max2', async (req, res) => {
-    // الرابط الشغال مالتك
-    const targetStream = "https://a15.kora-plus.app/live/max2.m3u8?token=V96UuDNyorhrMLvteaRm_RhJgFY&exp=17821662";
+app.get('/live/max2', (req, res) => {
+    // استقبال التوكين والوقت الجديد تلقائياً من رابط الـ JSON الخاص بتطبيقك
+    const token = req.query.token;
+    const exp = req.query.exp;
 
-    try {
-        // الاتصال بالبث مع إرسال الـ Headers المطلوبة لكسر أي حماية
-        const response = await axios({
-            method: 'get',
-            url: targetStream,
-            responseType: 'stream',
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Referer': 'https://blog.sports-world.space/',
-                'Origin': 'https://blog.sports-world.space'
-            }
-        });
+    // إذا لم يتم إرسال توكين جديد بالرابط، يتم استخدام هذا كاحتياط
+    const activeToken = token || "V96UuDNyorhrMLvteaRm_RhJgFY";
+    const activeExp = exp || "17821662";
 
-        // تمرير الـ Headers للتطبيق مباشرة
-        res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    // دمج البيانات لتوليد الرابط الشغال فوراً
+    const targetStream = `https://a15.kora-plus.app/live/max2.m3u8?token=${activeToken}&exp=${activeExp}`;
 
-        // ضخ البث مباشرة للمشغل بدون تحويل (Redirect)
-        response.data.pipe(res);
+    // هيدرات الأمان والـ CORS لضمان استجابة مشغل التطبيق بدون تعليق
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
 
-    } catch (error) {
-        console.error('Proxy Error:', error.message);
-        // إذا واجه مشكلة، يحول كخيار احتياطي أخير
-        return res.redirect(302, targetStream);
-    }
+    // توجيه ذكي ومستقر متوافق مع مشغلات الأندرويد
+    return res.redirect(307, targetStream);
 });
 
 module.exports = app;
