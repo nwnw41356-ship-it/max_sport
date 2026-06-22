@@ -17,19 +17,18 @@ app.get('/live/max2', async (req, res) => {
 
     try {
         const urlObj = new URL(targetUrl);
-        const targetOrigin = urlObj.origin;
-        const searchParams = urlObj.search; // هنا نحتفظ بالتوكن الخاص بالحماية الحركية
-
         const proxyBaseUrl = `https://${req.headers.host}/live/max2?url=`;
 
+        // [السحر هنا] تزوير كامل للهوية كأننا داخل موقع يلا شوت
         const headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-            'Referer': targetOrigin + '/',
-            'Origin': targetOrigin,
-            'Accept': '*/*'
+            'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+            'Referer': 'https://yalla-shoot.com/',
+            'Origin': 'https://yalla-shoot.com',
+            'Accept': '*/*',
+            'Connection': 'keep-alive'
         };
 
-        // إذا كان الطلب لقطع الفيديو .ts (السيرفر يمررها بالتوكن المحقون مالتها)
+        // جلب قطع الفيديو الصغيرة .ts بنفس الهيدرات المزورة
         if (targetUrl.includes('.ts') || urlObj.pathname.endsWith('.ts')) {
             const response = await fetch(targetUrl, { headers, signal: AbortSignal.timeout(12000) });
             if (!response.ok) return res.status(response.status).send('Chunk Error');
@@ -52,21 +51,14 @@ app.get('/live/max2', async (req, res) => {
 
         res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
         
-        // استخراج الرابط الأساسي بدون التوكن لدمجه مع الروابط النسبية بشكل صحيح
         const baseEndpoint = targetUrl.split('?')[0];
         const baseUrl = baseEndpoint.substring(0, baseEndpoint.lastIndexOf('/') + 1);
 
-        // [السحر هنا] إعادة توجيه وتصحيح كل سطر مع تمرير وحقن التوكن لكل القطع غصباً عليها
+        // تعديل الروابط الداخلية لتمر عبر البروكسي بالهوية الجديدة
         const fixedM3u8 = data.split('\n').map(line => {
             const trimmed = line.trim();
             if (trimmed && !trimmed.startsWith('#')) {
                 let fullUrl = trimmed.startsWith('http') ? trimmed : baseUrl + trimmed;
-                
-                // إذا الرابط الداخلي المولد ما بيه التوكن، احقنه فوراً بالتوكن الأصلي
-                if (searchParams && !fullUrl.includes('?')) {
-                    fullUrl += searchParams;
-                }
-                
                 return proxyBaseUrl + encodeURIComponent(fullUrl);
             }
             return line;
