@@ -4,32 +4,32 @@ const app = express();
 
 app.get('/live/max2', async (req, res) => {
     try {
-        // الاتصال المباشر بالسيرفر السري مالتهم لجلب بيانات المباراة والقنوات
+        // جلب البيانات من السيرفر السري للموقع
         const response = await axios.get('https://ws.kora-api.space/api/matche/30643/ar', {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                 'Referer': 'https://blog.sports-world.space/'
-            }
+            },
+            timeout: 5000 // وقت مستقطع 5 ثواني
         });
 
         const data = response.data;
 
-        // التأكد من أن المباراة نشطة وبها قنوات بث شغالة حالياً
+        // 1. إذا اكو مباراة لايف وقنواتها شغالة.. خذ الرابط فوراً
         if (data && data.channels && data.channels.length > 0) {
-            // أخذ رابط القناة الأولى المتوفرة في البث الشغال حالياً
             const liveUrl = data.channels[0].link;
-
             if (liveUrl) {
-                // تحويل المشغل بتطبيقك فوراً للرابط الشغال أبو التوكين الطازة
                 return res.redirect(liveUrl);
             }
         }
         
-        return res.status(404).send('لم يتم العثور على بث شغال حالياً من المصدر السري');
+        // 2. إذا البث واقف بالموقع الأصلي (مثل وقت الفجر)، حوله على سيرفر احتياطي شغال حتى لا يعلق التطبيق
+        return res.redirect('https://a15.kora-plus.app/live/max2/playlist.m3u8');
 
     } catch (error) {
-        console.error('Error fetching token:', error.message);
-        return res.status(500).send('مشكلة في الاتصال بالسيرفر السري للمصدر');
+        console.error('Error:', error.message);
+        // 3. حتى لو صار خطأ بالسيرفر مالتهم، حول المستخدم للاحتياطي لضمان استقرار التطبيق
+        return res.redirect('https://a15.kora-plus.app/live/max2/playlist.m3u8');
     }
 });
 
