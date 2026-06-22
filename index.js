@@ -1,43 +1,48 @@
 const express = require('express');
-const axios = require('axios');
 const app = express();
 
 app.get('/live/max2', async (req, res) => {
-    // هيدرات الأمان والمشغل الضرورية لتطبيق الأندرويد
+    // الرابط الجديد الشغال اللي دزيته إلي
+    const targetUrl = "https://v1.360-sport.live/broadcast/99Wr9fyF0EN6NR2s5_GDAw/1782095988/1782095727/1/max2.m3u8";
+
+    // إرسال هيدرات الـ CORS والمشغل لمنع تعليق التطبيق
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
 
     try {
-        // 1. محاولة جلب رابط البث المباشر المحدث من الـ API مالتهم
-        const apiResponse = await axios.get('https://ws.kora-api.space/api/matche/30643/ar', {
+        // استخدام fetch المدمج بـ Node.js لحل مشكلة الكراش نهائياً
+        const response = await fetch(targetUrl, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Referer': 'https://blog.sports-world.space/'
-            },
-            timeout: 4000
+                'Referer': 'https://a1.koora24.sbs/'
+            }
         });
 
-        let streamUrl = '';
-        if (apiResponse.data && apiResponse.data.channels && apiResponse.data.channels.length > 0) {
-            streamUrl = apiResponse.data.channels[0].link;
+        if (!response.ok) {
+            // إذا السيرفر الأصلي رفض الاستجابة، نحول التطبيق للرابط مباشرة كخطة بديلة
+            return res.redirect(302, targetUrl);
         }
 
-        // 2. إذا القناة شغالة بالموقع الأصلي وبها رابط.. حول التطبيق عليها فوراً
-        if (streamUrl && streamUrl.includes('http')) {
-            return res.redirect(302, streamUrl);
-        }
+        const data = await response.text();
+        res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+        
+        // تصحيح مسارات البث الداخلية لـ 360-sport حتى يقرأها مشغل الأندرويد كبث مباشر صافي
+        const baseUrl = targetUrl.substring(0, targetUrl.lastIndexOf('/') + 1);
+        let fixedM3u8 = data.split('\n').map(line => {
+            const trimmed = line.trim();
+            if (trimmed && !trimmed.startsWith('#') && !trimmed.startsWith('http')) {
+                return baseUrl + trimmed;
+            }
+            return line;
+        }).join('\n');
 
-        // 3. إذا البث واقف بالموقع (وقت الفجر)، حوله على هذا الرابط التجريبي المستمر الشغال 100% 
-        // حتى يفتح التطبيق فوراً وتختفي فرّة اللودينغ وتتأكد إن شغلك صحيح
-        const testStream = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8";
-        return res.redirect(302, testStream);
+        return res.send(fixedM3u8);
 
     } catch (error) {
-        console.error('API Error, redirecting to test stream:', error.message);
-        // حتى لو صار خطأ بالسيرفر مالتهم، نحول للتجريبي حتى لا يعلق تطبيق المستخدم
-        const testStream = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8";
-        return res.redirect(302, testStream);
+        console.error('Error proxying stream:', error.message);
+        // في حال حدوث أي خطأ بالسيرفر، يتم التحويل المباشر للرابط الشغال
+        return res.redirect(302, targetUrl);
     }
 });
 
