@@ -1,48 +1,55 @@
 const express = require('express');
 const app = express();
 
-app.get('/live/max2', async (req, res) => {
-    const targetUrl = req.query.url;
-
-    // هيدرات الأمان والـ CORS لمنع تعليق مشغل التطبيق
+// إعدادات الـ CORS للسماح للتطبيق بالاتصال
+app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    next();
+});
 
-    // إذا لم يتم إرسال رابط، يرجع خطأ 400 فوراً بدون أي بث بديل
+app.get('/live/max2', async (req, res) => {
+    const targetUrl = req.query.url;
+
     if (!targetUrl || !targetUrl.startsWith('http')) {
-        return res.status(400).send('Error: URL parameter is required');
+        return res.status(400).send('Error: Invalid URL');
     }
 
     try {
-        // جلب ملف البث مع محاكاة متصفح حقيقي لتخطي الحجب
+        // حركة ذكية: استخراج الدومين تلقائياً من الرابط لتمويه السيرفر (Spoofing)
+        const urlObj = new URL(targetUrl);
+        const targetOrigin = urlObj.origin;
+
+        // جلب ملف الـ M3U8 مع هيدرات محاكاة متصفح كامل
         const response = await fetch(targetUrl, {
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
-                'Referer': 'https://a1.koora24.sbs/',
-                'Origin': 'https://a1.koora24.sbs'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+                'Referer': targetOrigin + '/',
+                'Origin': targetOrigin,
+                'Accept': '*/*'
             },
-            signal: AbortSignal.timeout(5000) // وقت انتظار 5 ثوانٍ كحد أقصى
+            signal: AbortSignal.timeout(8000)
         });
 
-        // إذا الرابط ميت أو مشفر، يرجع خطأ 404 للمشغل مباشرة
         if (!response.ok) {
-            return res.status(404).send('Error: Stream offline or forbidden');
+            return res.status(response.status).send(`Error: Server returned ${response.status}`);
         }
 
         const data = await response.text();
-        
-        // التأكد من أن البيانات المستلمة هي ملف بث حقيقي
+
+        // التأكد من أن الرابط هو ملف M3U8 حقيقي
         if (!data.includes('#EXTM3U')) {
-            return res.status(400).send('Error: Not a valid M3U8 file');
+            return res.status(400).send('Error: Invalid stream format');
         }
 
-        // إرسال الهيدر الصحيح للمشغل وتعديل المسارات الداخلية للبث
+        // معالجة الروابط الداخلية داخل ملف الـ M3U8 لضمان عملها داخل التطبيق
         res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
-        
         const baseUrl = targetUrl.substring(0, targetUrl.lastIndexOf('/') + 1);
+        
         const fixedM3u8 = data.split('\n').map(line => {
             const trimmed = line.trim();
+            // تصحيح المسارات النسبية (التي لا تبدأ بـ http)
             if (trimmed && !trimmed.startsWith('#') && !trimmed.startsWith('http')) {
                 return baseUrl + trimmed;
             }
@@ -53,8 +60,7 @@ app.get('/live/max2', async (req, res) => {
 
     } catch (error) {
         console.error('Proxy Error:', error.message);
-        // في حال حدوث خطأ، يرسل خطأ 500 للتطبيق مباشرة
-        return res.status(500).send('Error: Stream connection failed');
+        return res.status(500).send('Error: Connection timed out or failed');
     }
 });
 
