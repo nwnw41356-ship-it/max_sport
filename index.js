@@ -4,6 +4,7 @@ const app = express();
 
 app.get('/live/max2', async (req, res) => {
     try {
+        // رابط المدونة التمويهية اللي تجيب منها البث
         const targetPage = 'https://blog.sports-world.space/news/cte-brain-disease-athletes-insurance-ar'; 
 
         const response = await axios.get(targetPage, {
@@ -14,12 +15,13 @@ app.get('/live/max2', async (req, res) => {
         });
 
         const htmlContent = response.data;
-        // قشط الرابط الذكي من كود المدونة التمويهية
-        const regex = /(https:\/\/a5\.kora-plus\.app\/live\/max2[^"\s>]+token=[^"\s>]+exp=[0-9]+)/;
+        
+        // تعديل ذكي: يبحث عن كورة بلس مهما كان رقم السيرفر (a5, a15, a20... إلخ)
+        const regex = /(https:\/\/a[0-9]+\.kora-plus\.app\/live\/max2[^"\s>]+token=[^"\s>]+exp=[0-9]+)/;
         const match = htmlContent.match(regex);
 
         if (match && match[0]) {
-            // توجيه المشغل مباشرة للرابط الجديد الشغال بالثانية الحالية
+            // تحويل المستخدم فوراً للرابط الجديد الشغال
             return res.redirect(match[0]);
         } else {
             return res.status(404).send('لم يتم العثور على بث شغال حالياً');
@@ -29,5 +31,4 @@ app.get('/live/max2', async (req, res) => {
     }
 });
 
-// هذا التعديل خاص بمنصة Vercel لتشغيل الكود بدون مشاكل بورتات
 module.exports = app;
