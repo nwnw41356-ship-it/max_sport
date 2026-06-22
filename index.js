@@ -1,7 +1,7 @@
 const express = require('express');
 const app = express();
 
-// إعدادات الـ CORS للسماح للتطبيق بالاتصال
+// إعدادات الـ CORS لضمان اتصال التطبيق بدون قيود
 app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -17,41 +17,50 @@ app.get('/live/max2', async (req, res) => {
     }
 
     try {
-        // حركة ذكية: استخراج الدومين تلقائياً من الرابط لتمويه السيرفر (Spoofing)
         const urlObj = new URL(targetUrl);
         const targetOrigin = urlObj.origin;
+        
+        // بناء رابط السيرفر مالتك ديناميكياً لتمرير كل شيء من خلاله
+        const proxyBaseUrl = `https://${req.headers.host}/live/max2?url=`;
 
-        // جلب ملف الـ M3U8 مع هيدرات محاكاة متصفح كامل
-        const response = await fetch(targetUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
-                'Referer': targetOrigin + '/',
-                'Origin': targetOrigin,
-                'Accept': '*/*'
-            },
-            signal: AbortSignal.timeout(8000)
-        });
+        const headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+            'Referer': targetOrigin + '/',
+            'Origin': targetOrigin,
+            'Accept': '*/*'
+        };
 
+        // [الحل السري] إذا كان الطلب لقطع الفيديو .ts، اسحبها كبيانات ثنائية (Binary) ومررها بهيدرات الحماية
+        if (targetUrl.includes('.ts') || urlObj.pathname.endsWith('.ts')) {
+            const response = await fetch(targetUrl, { headers, signal: AbortSignal.timeout(10000) });
+            if (!response.ok) return res.status(response.status).send('Error fetching TS chunk');
+            
+            res.setHeader('Content-Type', 'video/MP2T');
+            const arrayBuffer = await response.arrayBuffer();
+            return res.send(Buffer.from(arrayBuffer));
+        }
+
+        // إذا كان الطلب لملف البث الرئيسي .m3u8
+        const response = await fetch(targetUrl, { headers, signal: AbortSignal.timeout(8000) });
         if (!response.ok) {
-            return res.status(response.status).send(`Error: Server returned ${response.status}`);
+            return res.status(response.status).send(`Error: Origin returned ${response.status}`);
         }
 
         const data = await response.text();
 
-        // التأكد من أن الرابط هو ملف M3U8 حقيقي
         if (!data.includes('#EXTM3U')) {
-            return res.status(400).send('Error: Invalid stream format');
+            return res.status(400).send('Error: Invalid M3U8 format');
         }
 
-        // معالجة الروابط الداخلية داخل ملف الـ M3U8 لضمان عملها داخل التطبيق
         res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
         const baseUrl = targetUrl.substring(0, targetUrl.lastIndexOf('/') + 1);
-        
+
+        // إعادة كتابة وتوجيه كـل سطر داخل ملف البث ليمر غصباً عليه من خلال سيرفرك
         const fixedM3u8 = data.split('\n').map(line => {
             const trimmed = line.trim();
-            // تصحيح المسارات النسبية (التي لا تبدأ بـ http)
-            if (trimmed && !trimmed.startsWith('#') && !trimmed.startsWith('http')) {
-                return baseUrl + trimmed;
+            if (trimmed && !trimmed.startsWith('#')) {
+                const fullUrl = trimmed.startsWith('http') ? trimmed : baseUrl + trimmed;
+                return proxyBaseUrl + encodeURIComponent(fullUrl);
             }
             return line;
         }).join('\n');
@@ -60,7 +69,7 @@ app.get('/live/max2', async (req, res) => {
 
     } catch (error) {
         console.error('Proxy Error:', error.message);
-        return res.status(500).send('Error: Connection timed out or failed');
+        return res.status(500).send('Error: Connection failed');
     }
 });
 
