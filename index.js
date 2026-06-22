@@ -3,20 +3,19 @@ const axios = require('axios');
 const app = express();
 
 app.get('/live/max2', async (req, res) => {
-    // هيدرات الـ CORS والمشغل الضرورية لضمان عدم تعليق التطبيق
+    // هيدرات الأمان والمشغل الضرورية لتطبيق الأندرويد
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
 
     try {
-        // 1. جلب الرابط بالتوكين الجديد تلقائياً من الـ API السري مالتهم
+        // 1. محاولة جلب رابط البث المباشر المحدث من الـ API مالتهم
         const apiResponse = await axios.get('https://ws.kora-api.space/api/matche/30643/ar', {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                 'Referer': 'https://blog.sports-world.space/'
             },
-            timeout: 5000
+            timeout: 4000
         });
 
         let streamUrl = '';
@@ -24,43 +23,21 @@ app.get('/live/max2', async (req, res) => {
             streamUrl = apiResponse.data.channels[0].link;
         }
 
-        // إذا الـ API فارغ نستخدم الرابط الشغال مالتك كاحتياط
-        if (!streamUrl || !streamUrl.includes('http')) {
-            streamUrl = "https://a15.kora-plus.app/live/max2.m3u8?token=V96UuDNyorhrMLvteaRm_RhJgFY&exp=17821662";
+        // 2. إذا القناة شغالة بالموقع الأصلي وبها رابط.. حول التطبيق عليها فوراً
+        if (streamUrl && streamUrl.includes('http')) {
+            return res.redirect(302, streamUrl);
         }
 
-        // استخراج الرابط الأساسي للسيرفر (Base URL) لتصحيح المسارات الداخلية
-        const baseStreamUrl = streamUrl.substring(0, streamUrl.lastIndexOf('/') + 1);
-
-        // 2. قراءة محتوى ملف الـ m3u8 بالخلفية من سيرفر البث الأصلي
-        const m3u8Response = await axios.get(streamUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Referer': 'https://blog.sports-world.space/'
-            },
-            timeout: 5000
-        });
-
-        let m3u8Content = m3u8Response.data;
-
-        // 3. تحويل الروابط الداخلية من نسبية إلى روابط كاملة ومباشرة حتى يقرأها التطبيق فوراً
-        if (typeof m3u8Content === 'string') {
-            m3u8Content = m3u8Content.split('\n').map(line => {
-                const trimmed = line.trim();
-                if (trimmed && !trimmed.startsWith('#') && !trimmed.startsWith('http')) {
-                    return baseStreamUrl + trimmed;
-                }
-                return line;
-            }).join('\n');
-        }
-
-        // 4. إرسال الملف جاهز ومعدل للتطبيق مباشرة كأنه ملف محلي بدون (Redirect)
-        return res.send(m3u8Content);
+        // 3. إذا البث واقف بالموقع (وقت الفجر)، حوله على هذا الرابط التجريبي المستمر الشغال 100% 
+        // حتى يفتح التطبيق فوراً وتختفي فرّة اللودينغ وتتأكد إن شغلك صحيح
+        const testStream = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8";
+        return res.redirect(302, testStream);
 
     } catch (error) {
-        console.error('Error handling stream:', error.message);
-        // في حال حدوث أي خطأ بالاتصال، نرسل هيكل ملف فارغ حتى لا يعلق التطبيق
-        return res.send('#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-ENDLIST');
+        console.error('API Error, redirecting to test stream:', error.message);
+        // حتى لو صار خطأ بالسيرفر مالتهم، نحول للتجريبي حتى لا يعلق تطبيق المستخدم
+        const testStream = "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8";
+        return res.redirect(302, testStream);
     }
 });
 
