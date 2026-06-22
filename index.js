@@ -18,19 +18,20 @@ app.get('/live/max2', async (req, res) => {
     try {
         const urlObj = new URL(targetUrl);
         const targetOrigin = urlObj.origin;
+        const searchParams = urlObj.search; // هنا نحتفظ بالتوكن الخاص بالحماية الحركية
 
-        // هيدرات متطابقة تماماً مع المتصفح اللي فتح البث بنجاح عندك
+        const proxyBaseUrl = `https://${req.headers.host}/live/max2?url=`;
+
         const headers = {
-            'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
-            'Referer': 'https://m.defr.online/',
-            'Origin': 'https://m.defr.online',
-            'Accept': '*/*',
-            'Connection': 'keep-alive'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+            'Referer': targetOrigin + '/',
+            'Origin': targetOrigin,
+            'Accept': '*/*'
         };
 
-        // إذا كان الطلب قطعة فيديو .ts، نمررها بسرعة وبدون تأخير برمي البيانات مباشرة
-        if (targetUrl.includes('.ts')) {
-            const response = await fetch(targetUrl, { headers, signal: AbortSignal.timeout(6000) });
+        // إذا كان الطلب لقطع الفيديو .ts (السيرفر يمررها بالتوكن المحقون مالتها)
+        if (targetUrl.includes('.ts') || urlObj.pathname.endsWith('.ts')) {
+            const response = await fetch(targetUrl, { headers, signal: AbortSignal.timeout(12000) });
             if (!response.ok) return res.status(response.status).send('Chunk Error');
             
             res.setHeader('Content-Type', 'video/MP2T');
@@ -39,7 +40,7 @@ app.get('/live/max2', async (req, res) => {
         }
 
         // جلب ملف الـ m3u8 الرئيسي
-        const response = await fetch(targetUrl, { headers, signal: AbortSignal.timeout(6000) });
+        const response = await fetch(targetUrl, { headers, signal: AbortSignal.timeout(8000) });
         if (!response.ok) {
             return res.status(response.status).send(`Error: ${response.status}`);
         }
@@ -50,14 +51,22 @@ app.get('/live/max2', async (req, res) => {
         }
 
         res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
-        const baseUrl = targetUrl.substring(0, targetUrl.lastIndexOf('/') + 1);
-        const proxyBaseUrl = `https://${req.headers.host}/live/max2?url=`;
+        
+        // استخراج الرابط الأساسي بدون التوكن لدمجه مع الروابط النسبية بشكل صحيح
+        const baseEndpoint = targetUrl.split('?')[0];
+        const baseUrl = baseEndpoint.substring(0, baseEndpoint.lastIndexOf('/') + 1);
 
-        // إعادة توجيه المسارات لتمريرها بذكاء من السيرفر
+        // [السحر هنا] إعادة توجيه وتصحيح كل سطر مع تمرير وحقن التوكن لكل القطع غصباً عليها
         const fixedM3u8 = data.split('\n').map(line => {
             const trimmed = line.trim();
             if (trimmed && !trimmed.startsWith('#')) {
-                const fullUrl = trimmed.startsWith('http') ? trimmed : baseUrl + trimmed;
+                let fullUrl = trimmed.startsWith('http') ? trimmed : baseUrl + trimmed;
+                
+                // إذا الرابط الداخلي المولد ما بيه التوكن، احقنه فوراً بالتوكن الأصلي
+                if (searchParams && !fullUrl.includes('?')) {
+                    fullUrl += searchParams;
+                }
+                
                 return proxyBaseUrl + encodeURIComponent(fullUrl);
             }
             return line;
@@ -66,7 +75,8 @@ app.get('/live/max2', async (req, res) => {
         return res.send(fixedM3u8);
 
     } catch (error) {
-        return res.status(500).send('Error: Timeout or Connection Failed');
+        console.error('Proxy Error:', error.message);
+        return res.status(500).send('Error: Connection Failed');
     }
 });
 
